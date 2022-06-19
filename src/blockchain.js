@@ -1,4 +1,4 @@
-const SHA256 = require('crypto-js/sha256');
+const crypto = require('crypto');
 const EC = require('elliptic').ec;
 const ec = new EC('secp256k1');
 
@@ -7,14 +7,15 @@ class Transaction {
         this.fromAddress = fromAddress;
         this.toAddress = toAddress;
         this.amount = amount;
+        this.date = Date.now();
     }
 
     calculateHash() {
-        return SHA256(this.fromAddress + this.toAddress + this.amount).toString();
+        return crypto.createHash('sha256').update(this.fromAddress + this.toAddress + this.amount + this.timestamp).digest('hex');
     }
 
     signTransaction(signingKey) {
-        if (signingKey.getPublicKey('hex') !== this.fromAddress) {
+        if (signingKey.getPublic('hex') !== this.fromAddress) {
             throw Error('You cannot sign transaction for other wallets!');
         }
 
@@ -30,8 +31,8 @@ class Transaction {
             throw Error('No signature in this transaction');
         }
 
-        const  publicKey = ec.keyFromPublic(this.fromAddress, 'hex');
-        return publicKey.verify(this.calculateHash(), this.signature)
+        const publicKey = ec.keyFromPublic(this.fromAddress, 'hex');
+        return publicKey.verify(this.calculateHash(), this.signature);
     }
 }
 
@@ -45,11 +46,11 @@ class Block {
     }
 
     calculateHash() {
-        return SHA256(this.previousHash + this.timestamp + JSON.stringify(this.transactions) + this.nonce).toString();
+        return crypto.createHash('sha256').update(this.previousHash + this.timestamp + JSON.stringify(this.transactions) + this.nonce).digest('hex');
     }
 
     mineBlock(difficulty) {
-        while(this.hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
+        while(this.hash.substring(0, difficulty) !== Array(difficulty + 1).join('0')) {
             this.nonce++;
             this.hash = this.calculateHash();
         }
@@ -57,14 +58,14 @@ class Block {
         console.log("Block mined: " + this.hash);
     }
 
-    hasValidTransaction() {
+    hasValidTransactions() {
         for (const tx of this.transactions) {
-            if (!tx.isValid()) {
-                return false;
-            }
+          if (!tx.isValid()) {
+            return false;
+          }
         }
         return true;
-    }
+      }
 }
 
 class Blockchain {
@@ -83,19 +84,28 @@ class Blockchain {
         return this.chain[this.chain.length - 1];
     }
 
-    minePendingTransaction(miningRewardAddress) {
-        let block = new Block(Date.now(), this.pendingTransaction);
+    minePendingTransactions(miningRewardAddress) {
+        const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
+        this.pendingTransaction.push(rewardTx);
+
+        const block = new Block(Date.now(), this.pendingTransaction, this.getLatestBlock().hash);
         block.mineBlock(this.difficulty);
 
         console.log("Block successfully mined!");
         this.chain.push(block);
 
         this.pendingTransaction = [
-            new Transaction(null, miningRewardAddress, this.miningReward)
+            // new Transaction(null, miningRewardAddress, this.miningReward)
         ]
     }
 
     addTransaction(transaction) {
+        if (!transaction.toAddress || !transaction.fromAddress) {
+            throw Error('Transaction has neither from nor to address');
+        }
+        if (!transaction.isValid()) {
+            throw Error('Invalid transaction');
+        }
         this.pendingTransaction.push(transaction);
     }
 
@@ -117,19 +127,25 @@ class Blockchain {
     }
 
     isChainValid() {
+        const realGenesis = JSON.stringify(this.createGenesisBlock());
+
+        if (realGenesis !== JSON.stringify(this.chain[0])) {
+          return false;
+        }
+
         for (let i = 1; i < this.chain.length; i++) {
             const currentBlock = this.chain[i];
             const previousBlock = this.chain[i - 1];
-
-            if (!currentBlock.hasValidTransaction()) {
+        
+            if (!currentBlock.hasValidTransactions()) {
                 return false;
             }
 
+            if (previousBlock.hash !== currentBlock.previousHash) {
+                return false;
+            }
+        
             if (currentBlock.hash !== currentBlock.calculateHash()) {
-                return false;
-            }
-
-            if (currentBlock.previousHash !== previousBlock.hash) {
                 return false;
             }
         }
@@ -138,4 +154,5 @@ class Blockchain {
 }
 
 module.exports.Blockchain = Blockchain;
+module.exports.Block = Block;
 module.exports.Transaction = Transaction;
