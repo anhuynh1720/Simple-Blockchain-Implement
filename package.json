@@ -1,7 +1,7 @@
 {
   "name": "simple-blockchain-implement",
-  "version": "1.0.1",
-  "description": "",
+  "version": "1.0.4",
+  "description": "This a simple blockchain implementation",
   "main": "src/blockchain.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
